@@ -8,7 +8,7 @@ const SYSTEM_CONFIG: &str = "/etc/zxp/zxp.toml";
 const USER_CONFIG: &str = ".config/zxp/zxp.toml";
 
 lazy_static! {
-    static ref SETTINGS: RwLock<Settings> = RwLock::new(Settings::alloc());
+    static ref SETTINGS: RwLock<Settings> = RwLock::new(Settings::new());
 }
 
 
@@ -48,7 +48,7 @@ fn build_config(file: &str) -> Settings {
 }
 
 impl Settings {
-    pub fn alloc() -> Self {
+    fn new() -> Self {
         let settings: Settings = Default::default();
         settings
     }
@@ -63,19 +63,17 @@ impl Settings {
         *new_settings = build_config(&file);
     }
 
-    pub fn gh_repo() -> String {
+    pub fn gh_repo() -> Result<String, String> {
         match &SETTINGS.read().unwrap().github {
-            Some(g) => g.repo.clone(),
-            // TODO: handle this case correctly
-            None => "none".to_owned()
+            Some(g) => Ok(g.repo.clone()),
+            None => Err(format!("Github config is missing"))
         }
     }
 
-    pub fn gh_key() -> String {
+    pub fn gh_key() -> Result<String, String> {
         match &SETTINGS.read().unwrap().github {
-            Some(g) => g.key.clone(),
-            // TODO: handle this case correctly
-            None => "none".to_owned()
+            Some(g) => Ok(g.key.clone()),
+            None => Err(format!("Github config is missing"))
         }
     }
 

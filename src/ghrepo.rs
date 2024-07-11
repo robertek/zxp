@@ -9,8 +9,11 @@ const GH_URL: &str = "https://api.github.com/repos";
 const GH_ARTIFACTS: &str = "actions/artifacts";
 
 
-fn artifacts_metadata() -> serde_json::Value {
-    let repo = Settings::gh_repo();
+fn artifacts_metadata() -> Result<serde_json::Value, String> {
+    let repo = match Settings::gh_repo() {
+        Ok(r) => r,
+        Err(e) => return Err(e)
+    };
 
     let url = format!("{GH_URL}/{repo}/{GH_ARTIFACTS}");
     info!("Fetching repo zip url from:\n\t{url}");
@@ -21,11 +24,17 @@ fn artifacts_metadata() -> serde_json::Value {
         .into_json()
         .expect("Json conversion failed");
 
-    json
+    Ok(json)
 }
 
 pub fn github_artifacts() {
-    let json = artifacts_metadata();
+    let json = match artifacts_metadata() {
+        Ok(j) => j,
+        Err(e) => { 
+            error!("{}", e);
+            return;
+        }
+    };
 
     // total_count is a number and is not expected to be high, so the unwraps would pass
     let count = usize::try_from(json["total_count"].as_number().unwrap().as_u64().unwrap()).unwrap();
@@ -38,7 +47,10 @@ pub fn github_artifacts() {
 }
 
 fn artifact_url(artifact_name: Option<String>) -> Result<String, String> {
-    let json = artifacts_metadata();
+    let json = match artifacts_metadata() {
+        Ok(j) => j,
+        Err(e) => return Err(e)
+    };
 
     // total_count is a number and is not expected to be high, so the unwraps would pass
     let count = usize::try_from(json["total_count"].as_number().unwrap().as_u64().unwrap()).unwrap();
@@ -74,10 +86,14 @@ fn artifact_url(artifact_name: Option<String>) -> Result<String, String> {
     Ok(json["artifacts"][index]["archive_download_url"].as_str().unwrap().to_owned())
 }
 
-fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
-    let key = Settings::gh_key();
-
+fn downlad_zip(url: &str, zipfile: &str) -> Result<(), String> {
     info!("Preparing to download zip from:\n\t{url}");
+
+    let key = match Settings::gh_key() {
+        Ok(k) => k,
+        Err(e) => return Err(e)
+    };
+
     let resp = match ureq::get(&url)
         .set("Authorization", &key)
         .call() {
@@ -90,17 +106,9 @@ fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
         Err(..) => return Err(format!("Content-Length is missing for zipfile"))
     };
 
-    let root = path::Path::new(path);
-    match std::env::set_current_dir(&root) {
-        Ok(_) => (),
-        Err(e) => return Err(format!("Can't change directory {path}: {e}"))
-    };
-
-    let zipfile = format!("repo.zip");
-
-    let mut zipfp = match fs::File::create(&zipfile) {
+    let mut zipfp = match fs::File::create(zipfile) {
         Ok(fp) => fp,
-        Err(err) => return Err(format!("Failed to create {path}/repo.zip: {err}"))
+        Err(err) => return Err(format!("Failed to create repo.zip: {err}"))
     };
 
     if len < 1024*1024 {
@@ -110,17 +118,18 @@ fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
     }
 
     match io::copy(&mut resp.into_reader(), &mut zipfp) {
-        Ok(_) => (),
+        Ok(_) => return Ok(()),
         Err(e) => return Err(format!("Could not write to file: {e}"))
     };
+}
 
-    let zipfp = match fs::File::open(&zipfile) {
+fn uncompress_repo(zipfile: &str) -> Result<(), String> {
+    info!("Uncompressing zip");
+
+    let zipfp = match fs::File::open(zipfile) {
         Ok(fp) => fp,
-        Err(err) => return Err(format!("Failed to open {path}/repo.zip: {err}"))
+        Err(err) => return Err(format!("Failed to open repo.zip: {err}"))
     };
-
-
-    info!("Uncompressing zip to: {path}");
 
     let mut archive = zip::ZipArchive::new(zipfp).unwrap();
 
@@ -143,16 +152,36 @@ fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
             }
             let mut outfile = match fs::File::create(&filename) {
                 Ok(fp) => fp,
-                Err(e) => return Err(format!("Failed to create {path}/{}: {e}", filename.display()))
+                Err(e) => return Err(format!("Failed to create {}: {e}", filename.display()))
             };
             match io::copy(&mut file, &mut outfile) {
                 Ok(_) => (),
-                Err(e) => return Err(format!("Failed to write {path}/{}: {e}", filename.display()))
+                Err(e) => return Err(format!("Failed to write {}: {e}", filename.display()))
             };
         }
     }
 
     Ok(())
+}
+
+fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
+    let root = path::Path::new(path);
+    match std::env::set_current_dir(&root) {
+        Ok(_) => debug!("Changing working directory to {path}"),
+        Err(e) => return Err(format!("Can't change directory {path}: {e}"))
+    };
+
+    let zipfile = "repo.zip";
+
+    match downlad_zip(url, zipfile) {
+        Ok(_) => (),
+        Err(e) => return Err(e)
+    }
+
+    match uncompress_repo(zipfile) {
+        Ok(_) => return Ok(()),
+        Err(e) => return Err(e)
+    }
 }
 
 /// Fetches a zipped repository from github actions artifacts.
