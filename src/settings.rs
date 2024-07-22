@@ -1,15 +1,10 @@
 use config::{Config, Environment, File};
-use lazy_static::lazy_static;
 use serde_derive::Deserialize;
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
 
 const DEFAULT_CONFIG: &str = "zxp.toml";
 const SYSTEM_CONFIG: &str = "/etc/zxp/zxp.toml";
 const USER_CONFIG: &str = ".config/zxp/zxp.toml";
-
-lazy_static! {
-    static ref SETTINGS: RwLock<Settings> = RwLock::new(Settings::new());
-}
 
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -24,6 +19,11 @@ pub struct Settings {
     github: Option<Github>,
 }
 
+
+fn settings() -> &'static RwLock<Settings> {
+    static SETTINGS: OnceLock<RwLock<Settings>> = OnceLock::new();
+    SETTINGS.get_or_init(|| RwLock::new(Settings::default()))
+}
 
 fn build_config(file: &str) -> Settings {
     // Format the user config in a home directory.
@@ -48,40 +48,29 @@ fn build_config(file: &str) -> Settings {
 }
 
 impl Settings {
-    fn new() -> Self {
-        let settings: Settings = Default::default();
-        settings
-    }
-
     pub fn init(cfgfile: Option<String>) {
-        let file = match cfgfile {
-            Some(x) => x,
-            None => DEFAULT_CONFIG.to_string()
-        };
+        let file = cfgfile.unwrap_or(DEFAULT_CONFIG.to_string());
 
-        let mut new_settings = SETTINGS.write().unwrap();
+        let mut new_settings = settings().write().unwrap();
         *new_settings = build_config(&file);
     }
 
     pub fn gh_repo() -> Result<String, String> {
-        match &SETTINGS.read().unwrap().github {
+        match &settings().read().unwrap().github {
             Some(g) => Ok(g.repo.clone()),
-            None => Err(format!("Github config is missing"))
+            None => Err("Github config is missing".to_string())
         }
     }
 
     pub fn gh_key() -> Result<String, String> {
-        match &SETTINGS.read().unwrap().github {
+        match &settings().read().unwrap().github {
             Some(g) => Ok(g.key.clone()),
-            None => Err(format!("Github config is missing"))
+            None => Err("Github config is missing".to_string())
         }
     }
 
     pub fn verbosity() -> u8 {
-        match SETTINGS.read().unwrap().verbose {
-            Some(v) => v,
-            None => 0
-        }
+        settings().read().unwrap().verbose.unwrap_or(0)
     }
 }
 

@@ -8,7 +8,7 @@ pub fn xbps_update_check(root: &str) {
         .arg("-M")
         .arg("-u")
         .arg("-r")
-        .arg(format!("{root}"))
+        .arg(root)
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .spawn()
@@ -30,23 +30,23 @@ pub fn _xbps_sync(root: &str) {
     Command::new("xbps-install")
         .arg("-S")
         .arg("-r")
-        .arg(format!("{root}"))
+        .arg(root)
         .status()
         .expect("xbps failed");
 }
 
 pub fn xbps_update(root: &str, local_repo: Option<&str>) {
     if local_repo.is_some() {
-        debug!("runing xbps-install -u -r {root} -R {}", local_repo.unwrap());
+        debug!("runing xbps-install -u -r {} -R {}", root, local_repo.unwrap());
     } else {
-        debug!("runing xbps-install -u -r {root}");
+        debug!("runing xbps-install -u -r {}", root);
     }
 
     let mut binding = Command::new("xbps-install");
-    let cmd = binding.arg("-u").arg("-r").arg(format!("{root}"));
+    let cmd = binding.arg("-u").arg("-r").arg(root);
 
-    if local_repo.is_some() {
-        cmd.arg("-R").arg(format!("{}", local_repo.unwrap()));
+    if let Some(repo) = local_repo {
+        cmd.arg("-R").arg(repo);
     }
 
     cmd.status().expect("xbps failed");

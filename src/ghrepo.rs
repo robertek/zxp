@@ -94,16 +94,16 @@ fn downlad_zip(url: &str, zipfile: &str) -> Result<(), String> {
         Err(e) => return Err(e)
     };
 
-    let resp = match ureq::get(&url)
+    let resp = match ureq::get(url)
         .set("Authorization", &key)
         .call() {
             Ok(r) => r,
-            Err(..) => return Err(format!("Zip request failed"))
+            Err(..) => return Err("Zip request failed".to_string())
         };
 
     let len: usize = match resp.header("Content-Length").unwrap().parse() {
         Ok(l) => l,
-        Err(..) => return Err(format!("Content-Length is missing for zipfile"))
+        Err(..) => return Err("Content-Length is missing for zipfile".to_string())
     };
 
     let mut zipfp = match fs::File::create(zipfile) {
@@ -118,9 +118,9 @@ fn downlad_zip(url: &str, zipfile: &str) -> Result<(), String> {
     }
 
     match io::copy(&mut resp.into_reader(), &mut zipfp) {
-        Ok(_) => return Ok(()),
-        Err(e) => return Err(format!("Could not write to file: {e}"))
-    };
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Could not write to file: {e}"))
+    }
 }
 
 fn uncompress_repo(zipfile: &str) -> Result<(), String> {
@@ -166,7 +166,7 @@ fn uncompress_repo(zipfile: &str) -> Result<(), String> {
 
 fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
     let root = path::Path::new(path);
-    match std::env::set_current_dir(&root) {
+    match std::env::set_current_dir(root) {
         Ok(_) => debug!("Changing working directory to {path}"),
         Err(e) => return Err(format!("Can't change directory {path}: {e}"))
     };
@@ -179,8 +179,8 @@ fn fetch_repo(url: &str, path: &str) -> Result<(), String> {
     }
 
     match uncompress_repo(zipfile) {
-        Ok(_) => return Ok(()),
-        Err(e) => return Err(e)
+        Ok(_) => Ok(()),
+        Err(e) => Err(e)
     }
 }
 
